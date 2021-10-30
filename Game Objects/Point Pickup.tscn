@@ -1,0 +1,43 @@
+[gd_scene load_steps=2 format=2]
+
+[sub_resource type="GDScript" id=1]
+script/source = "extends Area2D
+
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	pass # Replace with function body.
+
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+#func _process(delta):
+#	pass
+
+
+func _on_Point_Pickup_body_entered(body):
+	if body.name == \"Player\":
+		collected()
+
+
+func collected():
+	Data.PointPickupManager.spawn()
+	queue_free()
+"
+
+[node name="Point Pickup" type="Area2D"]
+scale = Vector2( 1.09211, 1.07362 )
+script = SubResource( 1 )
+
+[node name="Polygon2D" type="Polygon2D" parent="."]
+color = Color( 0.227451, 0.921569, 0.0588235, 1 )
+polygon = PoolVector2Array( 0, 0, 0, 50, 50, 50, 50, 0 )
+
+[node name="CollisionPolygon2D" type="CollisionPolygon2D" parent="."]
+position = Vector2( -5.70052, -5.86323 )
+scale = Vector2( 1.24982, 1.24982 )
+polygon = PoolVector2Array( 0, 0, 0, 50, 50, 50, 50, 0 )
+[connection signal="body_entered" from="." to="." method="_on_Point_Pickup_body_entered"]
