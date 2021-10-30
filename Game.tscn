@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=2]
+[gd_scene load_steps=10 format=2]
 
 [ext_resource path="res://images/background.png" type="Texture" id=1]
 [ext_resource path="res://images/Player.png" type="Texture" id=2]
@@ -10,7 +10,7 @@ extents = Vector2( 26.1128, 5729.07 )
 [sub_resource type="RectangleShape2D" id=2]
 extents = Vector2( 26.1128, 9902.61 )
 
-[sub_resource type="GDScript" id=4]
+[sub_resource type="GDScript" id=3]
 script/source = "extends KinematicBody2D
 
 
@@ -29,7 +29,6 @@ var holdPos : Vector2
 export(float, 0, 0.5) var Deceleration = 0.05
 export(float, 5, 20) var DashStrength = 2
 
-onready var dragLine = $\"../Line2D\"
 onready var arrow = $\"CollisionShape2D/Pivot/Arrow\"
 onready var arrowPivot = $\"CollisionShape2D/Pivot\"
 
@@ -56,7 +55,6 @@ func _input(event):
 	
 	if pressedState == PRESSED:
 		holdPos = event.position
-		dragLine.points[1] = holdPos
 		changeArrowLength()
 		changeArrowDirection()
 		
@@ -65,14 +63,12 @@ func _input(event):
 		pressedPos = event.position
 		print(\"pressed at: \" + str(pressedPos))
 		pressedState = PRESSED
-		dragLine.points[0] = pressedPos
 		updateArrowVisibility()
 		
 	if Input.is_action_just_released(\"Left Click\") && pressedState == PRESSED:
 		releasedPos = event.position
 		print(\"released at: \" + str(releasedPos))
 		pressedState = RELEASED
-		dragLine.points[1] = releasedPos
 		velocity = (pressedPos - releasedPos) * -1 * DashStrength
 		updateArrowVisibility()
 		
@@ -88,11 +84,31 @@ func changeArrowDirection():
 	
 func updateArrowVisibility():	
 	arrow.visible = (pressedState == PRESSED)
-	dragLine.visible = (pressedState == PRESSED)
 "
 
-[sub_resource type="CircleShape2D" id=3]
+[sub_resource type="CircleShape2D" id=4]
 radius = 49.4569
+
+[sub_resource type="Curve" id=5]
+_data = [ Vector2( 0, 0 ), 0.0, 0.0, 0, 0, Vector2( 1, 1 ), 0.0, 0.0, 0, 0 ]
+
+[sub_resource type="GDScript" id=6]
+script/source = "extends Line2D
+
+export var length = 50
+var point = Vector2()
+
+func _process(delta):
+	global_position = Vector2(0,0)
+	global_rotation = 0
+	
+	point = get_parent().global_position * 2
+	
+	add_point(point)
+	
+	while get_point_count() > length:
+		remove_point(0)
+"
 
 [node name="Root" type="Control"]
 anchor_right = 1.0
@@ -191,15 +207,21 @@ rotation = 1.5708
 shape = SubResource( 2 )
 
 [node name="Player" type="KinematicBody2D" parent="."]
-position = Vector2( 297.709, 212.952 )
+position = Vector2( 364.108, 531.447 )
+scale = Vector2( 0.5, 0.5 )
 input_pickable = true
-script = SubResource( 4 )
+script = SubResource( 3 )
 Deceleration = 0.031
 DashStrength = 10.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
-scale = Vector2( 0.5, 0.5 )
-shape = SubResource( 3 )
+shape = SubResource( 4 )
+
+[node name="Line2D" type="Line2D" parent="Player/CollisionShape2D"]
+width = 60.0
+width_curve = SubResource( 5 )
+script = SubResource( 6 )
+length = 20
 
 [node name="Player" type="Sprite" parent="Player/CollisionShape2D"]
 texture = ExtResource( 2 )
@@ -223,6 +245,3 @@ patch_margin_bottom = 15
 __meta__ = {
 "_edit_use_anchors_": false
 }
-
-[node name="Line2D" type="Line2D" parent="."]
-points = PoolVector2Array( 0, 0, 0, 0 )
