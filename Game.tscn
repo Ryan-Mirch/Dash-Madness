@@ -1,11 +1,12 @@
-[gd_scene load_steps=14 format=2]
+[gd_scene load_steps=17 format=2]
 
 [ext_resource path="res://images/background.png" type="Texture" id=1]
 [ext_resource path="res://images/Player.png" type="Texture" id=2]
 [ext_resource path="res://images/Arrow.png" type="Texture" id=3]
 [ext_resource path="res://Game Objects/Point Pickup.tscn" type="PackedScene" id=4]
+[ext_resource path="res://Sounds/Hit.wav" type="AudioStream" id=5]
 
-[sub_resource type="GDScript" id=10]
+[sub_resource type="GDScript" id=1]
 script/source = "extends Control
 
 
@@ -24,7 +25,7 @@ func _ready():
 #	pass
 "
 
-[sub_resource type="GDScript" id=9]
+[sub_resource type="GDScript" id=2]
 script/source = "extends Control
 
 
@@ -46,15 +47,17 @@ func _ready():
 func _on_Arena_resized():
 	Data.ArenaWidth = rect_size.x
 	Data.ArenaHeight = rect_size.y
+	Data.Camera.offset.x = rect_size.x/2
+	Data.Camera.offset.y = rect_size.y/2
 "
 
-[sub_resource type="RectangleShape2D" id=1]
+[sub_resource type="RectangleShape2D" id=3]
 extents = Vector2( 26.1128, 5729.07 )
 
-[sub_resource type="RectangleShape2D" id=2]
+[sub_resource type="RectangleShape2D" id=4]
 extents = Vector2( 26.1128, 9902.61 )
 
-[sub_resource type="GDScript" id=3]
+[sub_resource type="GDScript" id=5]
 script/source = "extends KinematicBody2D
 
 
@@ -69,6 +72,8 @@ var pressedState = RELEASED
 var pressedPos : Vector2 
 var releasedPos : Vector2 
 var holdPos : Vector2 
+
+var rng = RandomNumberGenerator.new()
 
 export(float, 0, 0.1) var deceleration = 0.05
 export(float, 5, 100) var dashSensitivity = 2
@@ -92,13 +97,18 @@ func _physics_process(delta):
 	if collision_info:
 		velocity = velocity.bounce(collision_info.normal)
 		
+		if collision_info.collider.name == \"Wall\":
+			wallCollision()
+			
+		Data.Camera.shake(velocity.length()/10,.025,1000)
+		
 	velocity = velocity.linear_interpolate(Vector2(0,0), deceleration)
 	
 
 
-func _input(event):
 	
-	
+
+func _input(event):	
 	if pressedState == PRESSED:
 		if event.position != Vector2(0,0):
 			holdPos = event.position
@@ -119,6 +129,7 @@ func _input(event):
 		pressedState = RELEASED
 		updateVelocity()
 		updateArrowVisibility()
+		launchCameraShake()
 		
 func getPower():
 	return clamp(pressedPos.distance_to(holdPos),0, maxDragLength)
@@ -137,15 +148,24 @@ func updateArrowVisibility():
 	
 func updateVelocity():
 	velocity = (pressedPos - releasedPos).normalized() * -1 * dashSensitivity * getPower()
+	
+func wallCollision():
+	rng.randomize()
+	var pitchScale = rng.randf_range(0.9, 1.1)
+	var volume = (velocity.length()/400) - 15
+	Data.SoundManager.playSound(\"Wall Collision\", volume, pitchScale)
+	
+func launchCameraShake():
+	Data.Camera.shake(velocity.length(),.01,5000)
 "
 
-[sub_resource type="CircleShape2D" id=4]
+[sub_resource type="CircleShape2D" id=6]
 radius = 49.4569
 
-[sub_resource type="Curve" id=5]
+[sub_resource type="Curve" id=7]
 _data = [ Vector2( 0, 0 ), 0.0, 0.0, 0, 0, Vector2( 1, 1 ), 0.0, 0.0, 0, 0 ]
 
-[sub_resource type="GDScript" id=6]
+[sub_resource type="GDScript" id=8]
 script/source = "extends Line2D
 
 export var length = 50
@@ -163,7 +183,7 @@ func _process(delta):
 		remove_point(0)
 "
 
-[sub_resource type="GDScript" id=8]
+[sub_resource type="GDScript" id=9]
 script/source = "extends Node
 
 
@@ -197,20 +217,89 @@ func generateRandomPos():
 	return Vector2(x,y)
 "
 
+[sub_resource type="GDScript" id=10]
+script/source = "extends Camera2D
+
+
+onready var shakeTimer = $Timer
+onready var tween = $Tween
+
+var shake_amount = 0
+var default_offset = offset
+
+
+func _ready():
+	Data.Camera = self
+	set_process(false)
+
+
+func _process(delta):
+	offset = Vector2(rand_range(-shake_amount, shake_amount), rand_range(-shake_amount, shake_amount)) * delta + default_offset
+
+
+func shake(new_shake, shake_time=0.4, shake_limit=100):
+	shake_amount += new_shake
+	if shake_amount > shake_limit:
+		shake_amount = shake_limit
+	
+	shakeTimer.wait_time = shake_time
+	
+	tween.stop_all()
+	set_process(true)
+	shakeTimer.start()
+	
+
+
+func _on_Timer_timeout():
+	shake_amount = 0
+	set_process(false)
+	
+	tween.interpolate_property(self, \"offset\", offset, default_offset,
+	0.1, Tween.TRANS_QUAD, Tween.EASE_IN_OUT)
+	tween.start()
+"
+
+[sub_resource type="GDScript" id=11]
+script/source = "extends Node
+
+
+# Declare member variables here. Examples:
+# var a = 2
+# var b = \"text\"
+
+
+# Called when the node enters the scene tree for the first time.
+func _ready():
+	Data.SoundManager = self
+
+func playSound(soundName, volume, pitchScale):
+	if !has_node(soundName):
+		return
+	
+	var sound = get_node(soundName)
+	var audioStreamPlayers = sound.get_children()
+	for asp in audioStreamPlayers:
+		if !asp.playing:
+			asp.volume_db = volume
+			asp.pitch_scale = pitchScale
+			asp.playing = true
+			print(asp.name)
+			return
+"
+
 [node name="Game Scene" type="Control"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
-script = SubResource( 10 )
+script = SubResource( 1 )
 __meta__ = {
-"_edit_lock_": true,
 "_edit_use_anchors_": false
 }
 
 [node name="Arena" type="Control" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
-script = SubResource( 9 )
+script = SubResource( 2 )
 __meta__ = {
 "_edit_lock_": true,
 "_edit_use_anchors_": false
@@ -220,7 +309,6 @@ __meta__ = {
 anchor_right = 1.0
 anchor_bottom = 1.0
 __meta__ = {
-"_edit_lock_": true,
 "_edit_use_anchors_": false
 }
 
@@ -238,21 +326,37 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
+[node name="Border2" type="NinePatchRect" parent="Arena"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = ExtResource( 1 )
+region_rect = Rect2( 0, 0, 150, 150 )
+patch_margin_left = 42
+patch_margin_top = 48
+patch_margin_right = 38
+patch_margin_bottom = 41
+__meta__ = {
+"_edit_lock_": true,
+"_edit_use_anchors_": false
+}
+
 [node name="Physics Walls" type="Node" parent="."]
 
 [node name="Left Wall" type="Control" parent="Physics Walls"]
+visible = false
 anchor_top = 0.5
 anchor_bottom = 0.5
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="StaticBody2D" type="StaticBody2D" parent="Physics Walls/Left Wall"]
+[node name="Wall" type="StaticBody2D" parent="Physics Walls/Left Wall"]
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Left Wall/StaticBody2D"]
-shape = SubResource( 1 )
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Left Wall/Wall"]
+shape = SubResource( 3 )
 
 [node name="Right Wall" type="Control" parent="Physics Walls"]
+visible = false
 anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
@@ -261,26 +365,28 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="StaticBody2D" type="StaticBody2D" parent="Physics Walls/Right Wall"]
+[node name="Wall" type="StaticBody2D" parent="Physics Walls/Right Wall"]
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Right Wall/StaticBody2D"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Right Wall/Wall"]
 position = Vector2( 1.5874, 0 )
-shape = SubResource( 1 )
+shape = SubResource( 3 )
 
 [node name="Top Wall" type="Control" parent="Physics Walls"]
+visible = false
 anchor_left = 0.5
 anchor_right = 0.5
 __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="StaticBody2D" type="StaticBody2D" parent="Physics Walls/Top Wall"]
+[node name="Wall" type="StaticBody2D" parent="Physics Walls/Top Wall"]
 rotation = 1.5708
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Top Wall/StaticBody2D"]
-shape = SubResource( 2 )
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Top Wall/Wall"]
+shape = SubResource( 4 )
 
 [node name="Bottom Wall" type="Control" parent="Physics Walls"]
+visible = false
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
@@ -289,27 +395,27 @@ __meta__ = {
 "_edit_use_anchors_": false
 }
 
-[node name="StaticBody2D" type="StaticBody2D" parent="Physics Walls/Bottom Wall"]
+[node name="Wall" type="StaticBody2D" parent="Physics Walls/Bottom Wall"]
 rotation = 1.5708
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Bottom Wall/StaticBody2D"]
-shape = SubResource( 2 )
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Physics Walls/Bottom Wall/Wall"]
+shape = SubResource( 4 )
 
 [node name="Player" type="KinematicBody2D" parent="."]
 position = Vector2( 364.108, 531.447 )
 scale = Vector2( 0.5, 0.5 )
 input_pickable = true
-script = SubResource( 3 )
+script = SubResource( 5 )
 deceleration = 0.04
 dashSensitivity = 21.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player"]
-shape = SubResource( 4 )
+shape = SubResource( 6 )
 
 [node name="Line2D" type="Line2D" parent="Player/CollisionShape2D"]
 width = 60.0
-width_curve = SubResource( 5 )
-script = SubResource( 6 )
+width_curve = SubResource( 7 )
+script = SubResource( 8 )
 length = 20
 
 [node name="Player" type="Sprite" parent="Player/CollisionShape2D"]
@@ -336,9 +442,44 @@ __meta__ = {
 }
 
 [node name="Point Pickup Manager" type="Node" parent="."]
-script = SubResource( 8 )
+script = SubResource( 9 )
 edgePadding = 95.0
 
 [node name="Point Pickup" parent="." instance=ExtResource( 4 )]
 position = Vector2( 488.994, 817.24 )
+
+[node name="Camera2D" type="Camera2D" parent="."]
+offset = Vector2( 360, 640 )
+current = true
+script = SubResource( 10 )
+
+[node name="Timer" type="Timer" parent="Camera2D"]
+
+[node name="Tween" type="Tween" parent="Camera2D"]
+
+[node name="Sound Manager" type="Node" parent="."]
+script = SubResource( 11 )
+
+[node name="Wall Collision" type="Node" parent="Sound Manager"]
+
+[node name="1" type="AudioStreamPlayer" parent="Sound Manager/Wall Collision"]
+stream = ExtResource( 5 )
+mix_target = 2
+
+[node name="2" type="AudioStreamPlayer" parent="Sound Manager/Wall Collision"]
+stream = ExtResource( 5 )
+mix_target = 2
+
+[node name="3" type="AudioStreamPlayer" parent="Sound Manager/Wall Collision"]
+stream = ExtResource( 5 )
+mix_target = 2
+
+[node name="4" type="AudioStreamPlayer" parent="Sound Manager/Wall Collision"]
+stream = ExtResource( 5 )
+mix_target = 2
+
+[node name="5" type="AudioStreamPlayer" parent="Sound Manager/Wall Collision"]
+stream = ExtResource( 5 )
+mix_target = 2
 [connection signal="resized" from="Arena" to="Arena" method="_on_Arena_resized"]
+[connection signal="timeout" from="Camera2D/Timer" to="Camera2D" method="_on_Timer_timeout"]
